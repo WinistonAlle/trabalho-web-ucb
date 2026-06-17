@@ -3,20 +3,18 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
 import trio from '../assets/trio.png'
 
-/**
- * Login — autenticacao simulada.
- * Valida campos obrigatorios e formato de e-mail. Qualquer
- * e-mail/senha validos autenticam (sem backend).
- */
 export default function Login() {
-  const { login, isAuth } = useAuth()
+  const { login, isAuth, user } = useAuth()
   const navigate = useNavigate()
 
+  const [role, setRole] = useState('admin')
   const [form, setForm] = useState({ email: '', senha: '' })
   const [errors, setErrors] = useState({})
 
-  // Se ja estiver logado, nao mostra o login.
-  if (isAuth) return <Navigate to="/" replace />
+  // Já logado → redireciona para a área correta
+  if (isAuth) {
+    return <Navigate to={user?.role === 'cliente' ? '/loja' : '/'} replace />
+  }
 
   const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value })
 
@@ -33,8 +31,8 @@ export default function Login() {
   function handleSubmit(e) {
     e.preventDefault()
     if (!validar()) return
-    login(form.email.trim())
-    navigate('/', { replace: true })
+    login(form.email.trim(), role)
+    navigate(role === 'cliente' ? '/loja' : '/', { replace: true })
   }
 
   return (
@@ -44,15 +42,38 @@ export default function Login() {
         <div>
           <span className="tag">Cervejaria Artesanal</span>
           <h1>MARS <b>BEER</b></h1>
-          <p>Da fermentação à taça, cada lote carrega a força do leão. Entre no painel e gerencie a operação.</p>
+          <p>
+            Da fermentação à taça, cada lote carrega a força do leão.
+            {role === 'admin'
+              ? ' Entre no painel e gerencie a operação.'
+              : ' Explore nossas cervejas e faça seu pedido.'}
+          </p>
         </div>
         <img className="bottles" src={trio} alt="Garrafas MARS BEER" />
       </aside>
 
       <div className="login-panel">
         <form className="login-card" onSubmit={handleSubmit} noValidate>
-          <h2>Acessar painel</h2>
+          <h2>{role === 'admin' ? 'Acessar painel' : 'Entrar na loja'}</h2>
           <p className="muted">Entre com suas credenciais para continuar.</p>
+
+          {/* Seletor de papel */}
+          <div className="role-tabs">
+            <button
+              type="button"
+              className={`role-tab${role === 'admin' ? ' active' : ''}`}
+              onClick={() => setRole('admin')}
+            >
+              Administrador
+            </button>
+            <button
+              type="button"
+              className={`role-tab${role === 'cliente' ? ' active' : ''}`}
+              onClick={() => setRole('cliente')}
+            >
+              Cliente
+            </button>
+          </div>
 
           <div className={'field' + (errors.email ? ' invalid' : '')}>
             <label htmlFor="email">E-mail</label>
