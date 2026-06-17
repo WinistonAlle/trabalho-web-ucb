@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext.jsx'
+import { useTheme } from '../context/ThemeContext.jsx'
 
 const LINKS_ADMIN = [
   { to: '/cervejas',  label: 'Cervejas' },
@@ -16,6 +17,7 @@ const LINKS_CLIENTE = [
 
 export default function Navbar() {
   const { user, logout, isAuth, isAdmin, isCliente } = useAuth()
+  const { tema, toggleTema } = useTheme()
   const navigate = useNavigate()
   const [scrolled, setScrolled] = useState(false)
 
@@ -53,6 +55,14 @@ export default function Navbar() {
         </div>
 
         <div className="nav-user">
+          <button
+            className="tema-btn"
+            onClick={toggleTema}
+            title={tema === 'escuro' ? 'Mudar para tema claro' : 'Mudar para tema escuro'}
+            aria-label="Alternar tema"
+          >
+            {tema === 'escuro' ? '☀' : '🌙'}
+          </button>
           {isAuth ? (
             <>
               <span title={user?.email}>

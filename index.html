@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MARS BEER — Cervejaria Artesanal</title>
+    <script>
+      (function () {
+        var t = localStorage.getItem('mb_tema') || 'escuro';
+        document.documentElement.setAttribute('data-tema', t);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
