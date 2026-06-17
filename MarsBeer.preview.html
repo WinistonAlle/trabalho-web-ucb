@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MARS BEER — Preview</title>
+  <!-- Reaproveita o MESMO sistema de design do projeto Vite -->
+  <link rel="stylesheet" href="src/index.css" />
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    /* O preview roda numa unica pagina; este wrapper limita a altura util. */
+    html, body, #root { height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!--
+    PREVIEW EXECUTAVEL (arquivo unico) — espelha o projeto Vite de src/.
+    O codigo "de verdade", separado em componentes, esta na pasta src/.
+    Aqui usamos HashRouter (amigavel a iframes) e React via CDN.
+  -->
+  <script type="text/jsx-source" id="appsrc">
+    const { useState, useEffect, useMemo, createContext, useContext } = React;
+    const { HashRouter, Routes, Route, NavLink, Navigate, useNavigate, Outlet, Link } = ReactRouterDOM;
+
+    /* ---------- imagens ---------- */
+    const IMG = {
+      trio: 'src/assets/trio.png',
+      florest: 'src/assets/florest.png',
+      bluedark: 'src/assets/bluedark.png',
+      soldatarde: 'src/assets/soldatarde.png',
+      duoGreen: 'src/assets/duo-green.png',
+    };
+
+    /* ---------- data/linhas ---------- */
+    const LINHAS = {
+      'FLOREST':      { cor: '#4A5E3A', img: IMG.florest,    estilo: 'India Pale Ale',   desc: 'Lupulada e herbal, com final seco e aroma de mata fechada.' },
+      'BLUE DARK':    { cor: '#2f5a8f', img: IMG.bluedark,   estilo: 'Dunkel',           desc: 'Maltada e encorpada, notas de caramelo, chocolate e noite fria.' },
+      'SOL DA TARDE': { cor: '#d07a2b', img: IMG.soldatarde, estilo: 'American Pale Ale', desc: 'Cítrica e refrescante, dourada como o fim de uma tarde de verão.' },
+    };
+    const LINHA_NOMES = Object.keys(LINHAS);
+    const ESTILOS = ['IPA', 'APA', 'Lager', 'Pilsen', 'Weiss', 'Witbier', 'Stout', 'Dunkel'];
+
+    /* ---------- utils/storage ---------- */
+    const KEYS = { cervejas: 'mb_cervejas', clientes: 'mb_clientes', pedidos: 'mb_pedidos' };
+    const load = (k) => { try { return JSON.parse(localStorage.getItem(k)) || []; } catch { return []; } };
+    const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+    const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    const brl = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const dataBR = (iso) => { if (!iso) return '—'; const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
+
+    /* ---------- context/AuthContext ---------- */
+    const AuthContext = createContext(null);
+    function AuthProvider({ children }) {
+      const [user, setUser] = useState(() => { const s = localStorage.getItem('mb_auth'); return s ? JSON.parse(s) : null; });
+      useEffect(() => { if (user) localStorage.setItem('mb_auth', JSON.stringify(user)); else localStorage.removeItem('mb_auth'); }, [user]);
+      const login = (email) => setUser({ email, since: Date.now() });
+      const logout = () => setUser(null);
+      return <AuthContext.Provider value={{ user, login, logout, isAuth: !!user }}>{children}</AuthContext.Provider>;
+    }
+    const useAuth = () => useContext(AuthContext);
+
+    /* ---------- components/ProtectedRoute ---------- */
+    function ProtectedRoute({ children }) {
+      const { isAuth } = useAuth();
+      if (!isAuth) return <Navigate to="/login" replace />;
+      return children;
+    }
+
+    /* ---------- components/Navbar ---------- */
+    const LINKS = [
+      { to: '/', label: 'Home', end: true },
+      { to: '/cervejas', label: 'Cervejas' },
+      { to: '/clientes', label: 'Clientes' },
+      { to: '/pedidos', label: 'Pedidos' },
+      { to: '/relatorio', label: 'Relatório' },
+    ];
+    function Navbar() {
+      const { user, logout } = useAuth();
+      const navigate = useNavigate();
+      const handleLogout = () => { logout(); navigate('/login', { replace: true }); };
+      return (
+        <nav className="navbar">
+          <div className="container navbar-inner">
+            <NavLink to="/" className="brand"><span className="crest">M</span>MARS&nbsp;<b>BEER</b></NavLink>
+            <div className="nav-links">
+              {LINKS.map((l) => (
+                <NavLink key={l.to} to={l.to} end={l.end} className={({ isActive }) => 'nav-link' + (isActive ? ' active' : '')}>{l.label}</NavLink>
+              ))}
+            </div>
+            <div className="nav-user">
+              <span title={user?.email}>{user?.email}</span>
+              <button className="btn-logout" onClick={handleLogout}>Sair</button>
+            </div>
+          </div>
+        </nav>
+      );
+    }
+
+    /* ---------- components/Footer ---------- */
+    function Footer() {
+      return (
+        <footer className="footer">
+          <div className="container footer-inner">
+            <div className="brand" style={{ color: '#fff' }}><span className="crest">M</span>MARS&nbsp;<b style={{ color: 'var(--dourado)' }}>BEER</b></div>
+            <small>Cervejaria Artesanal · Proibida a venda para menores de 18 anos · Beba com moderação</small>
+            <small>© {new Date().getFullYear()} MARS BEER</small>
+          </div>
+        </footer>
+      );
+    }
+
+    /* ---------- components/Layout ---------- */
+    function Layout() {
+      return (<div className="app"><Navbar /><Outlet /><Footer /></div>);
+    }
+
+    /* ---------- components/DataTable (reutilizavel) ---------- */
+    function DataTable({ columns, rows, actions, empty }) {
+      if (!rows.length) {
+        return (<div className="empty"><strong>{empty?.titulo || 'Nenhum registro'}</strong>{empty?.texto || 'Cadastre o primeiro item para começar.'}</div>);
+      }
+      return (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr>{columns.map((c) => <th key={c.key}>{c.label}</th>)}{actions && <th>Ações</th>}</tr></thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  {columns.map((c) => <td key={c.key}>{c.render ? c.render(row) : row[c.key]}</td>)}
+                  {actions && <td className="actions">{actions(row)}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    /* ---------- components/Modal (reutilizavel) ---------- */
+    function Modal({ title, onClose, children, footer }) {
+      useEffect(() => {
+        const onKey = (e) => e.key === 'Escape' && onClose();
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [onClose]);
+      return (
+        <div className="modal-overlay" onMouseDown={onClose}>
+          <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="modal-head"><h3>{title}</h3><button className="x-btn" onClick={onClose} aria-label="Fechar">×</button></div>
+            <div className="modal-body">{children}</div>
+            {footer && <div className="modal-foot">{footer}</div>}
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- pages/Login ---------- */
+    function Login() {
+      const { login, isAuth } = useAuth();
+      const navigate = useNavigate();
+      const [form, setForm] = useState({ email: '', senha: '' });
+      const [errors, setErrors] = useState({});
+      if (isAuth) return <Navigate to="/" replace />;
+      const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+      function validar() {
+        const err = {};
+        if (!form.email.trim()) err.email = 'Informe o e-mail.';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) err.email = 'E-mail inválido.';
+        if (!form.senha) err.senha = 'Informe a senha.';
+        else if (form.senha.length < 4) err.senha = 'A senha deve ter ao menos 4 caracteres.';
+        setErrors(err); return Object.keys(err).length === 0;
+      }
+      function handleSubmit(e) { e.preventDefault(); if (!validar()) return; login(form.email.trim()); navigate('/', { replace: true }); }
+      return (
+        <div className="login-wrap">
+          <aside className="login-aside">
+            <span className="crest-lg">M</span>
+            <div>
+              <span className="tag">Cervejaria Artesanal</span>
+              <h1>MARS <b>BEER</b></h1>
+              <p>Da fermentação à taça, cada lote carrega a força do leão. Entre no painel e gerencie a operação.</p>
+            </div>
+            <img className="bottles" src={IMG.trio} alt="Garrafas MARS BEER" />
+          </aside>
+          <div className="login-panel">
+            <form className="login-card" onSubmit={handleSubmit} noValidate>
+              <h2>Acessar painel</h2>
+              <p className="muted">Entre com suas credenciais para continuar.</p>
+              <div className={'field' + (errors.email ? ' invalid' : '')}>
+                <label htmlFor="email">E-mail</label>
+                <input id="email" type="email" placeholder="voce@marsbeer.com" value={form.email} onChange={set('email')} />
+                {errors.email && <span className="field-error">{errors.email}</span>}
+              </div>
+              <div className={'field' + (errors.senha ? ' invalid' : '')}>
+                <label htmlFor="senha">Senha</label>
+                <input id="senha" type="password" placeholder="••••••••" value={form.senha} onChange={set('senha')} />
+                {errors.senha && <span className="field-error">{errors.senha}</span>}
+              </div>
+              <button type="submit" className="btn btn-primary btn-block">Entrar</button>
+              <p className="login-hint">Acesso simulado — qualquer e-mail e senha válidos entram.</p>
+            </form>
+          </div>
+        </div>
+      );
+    }
+
+    /* ---------- pages/Home ---------- */
+    function Home() {
+      return (
+        <main>
+          <section className="hero">
+            <div className="container hero-inner">
+              <div className="hero-copy">
+                <p className="hero-eyebrow">Cervejaria Artesanal · Desde 2018</p>
+                <h1>A força do<br /><b>leão</b> em cada gole.</h1>
+                <p>Cervejas artesanais de caráter, fermentadas em pequenos lotes com ingredientes selecionados. Conheça as linhas que rugem.</p>
+                <div className="hero-cta">
+                  <a href="#linhas" className="btn btn-gold">Ver as cervejas</a>
+                  <Link to="/pedidos" className="btn btn-ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }}>Fazer um pedido</Link>
+                </div>
+              </div>
+              <div className="hero-art"><img src={IMG.trio} alt="Linha completa MARS BEER" /></div>
+            </div>
+          </section>
+
+          <section className="section about">
+            <div className="container about-grid">
+              <div className="about-img"><img src={IMG.duoGreen} alt="Garrafas MARS BEER FLOREST" /></div>
+              <div className="about-text">
+                <p className="page-eyebrow">Sobre nós</p>
+                <h2>Artesanal de verdade, do grão à taça.</h2>
+                <p>A MARS BEER nasceu da obsessão por sabor. Brassamos em pequenos lotes, controlando cada etapa — maltagem, fervura, lupulagem e maturação — para entregar cervejas com personalidade e consistência.</p>
+                <p>Nosso leão é símbolo de coragem: a coragem de fugir do óbvio e criar rótulos que contam histórias.</p>
+                <div className="about-stats">
+                  <div><div className="n">3</div><div className="l">Linhas autorais</div></div>
+                  <div><div className="n">100%</div><div className="l">Produção artesanal</div></div>
+                  <div><div className="n">∞</div><div className="l">Paixão por cerveja</div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="section" id="linhas">
+            <div className="container">
+              <p className="section-eyebrow">Nossas cervejas</p>
+              <h2 className="section-title">Três linhas, um só rugido</h2>
+              <p className="section-lead">Cada rótulo tem perfil próprio. Escolha o seu humor e deixe o leão guiar.</p>
+              <div className="beers-grid">
+                {LINHA_NOMES.map((nome) => {
+                  const linha = LINHAS[nome];
+                  return (
+                    <article className="beer-card" key={nome}>
+                      <div className="shot" style={{ background: `linear-gradient(160deg, ${linha.cor}1a, ${linha.cor}05)` }}>
+                        <img src={linha.img} alt={`MARS BEER ${nome}`} />
+                      </div>
+                      <div className="body">
+                        <span className="line-tag" style={{ color: linha.cor }}>{nome}</span>
+                        <h3>{linha.estilo}</h3>
+                        <p>{linha.desc}</p>
+                        <div className="meta">
+                          <span><small>Estilo</small>{linha.estilo}</span>
+                          <span><small>Rótulo</small>{nome}</span>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </section>
+        </main>
+      );
+    }
+
+    /* ---------- pages/Cervejas (CRUD 1) ---------- */
+    const VAZIO_CERV = { nome: '', estilo: 'IPA', linha: 'FLOREST', teor: '', preco: '', descricao: '' };
+    function Cervejas() {
+      const [itens, setItens] = useState(() => load(KEYS.cervejas));
+      const [busca, setBusca] = useState('');
+      const [modalAberto, setModalAberto] = useState(false);
+      const [editando, setEditando] = useState(null);
+      const [form, setForm] = useState(VAZIO_CERV);
+      const [errors, setErrors] = useState({});
+      useEffect(() => { save(KEYS.cervejas, itens); }, [itens]);
+      const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+      const abrirNovo = () => { setEditando(null); setForm(VAZIO_CERV); setErrors({}); setModalAberto(true); };
+      const abrirEdicao = (item) => { setEditando(item.id); setForm({ ...item }); setErrors({}); setModalAberto(true); };
+      function validar() {
+        const err = {};
+        if (!form.nome.trim()) err.nome = 'Informe o nome.';
+        if (!form.estilo) err.estilo = 'Selecione o estilo.';
+        if (form.teor === '' || isNaN(form.teor) || Number(form.teor) <= 0) err.teor = 'Teor inválido.';
+        if (form.preco === '' || isNaN(form.preco) || Number(form.preco) <= 0) err.preco = 'Preço inválido.';
+        setErrors(err); return Object.keys(err).length === 0;
+      }
+      function salvar(e) {
+        e.preventDefault(); if (!validar()) return;
+        const dados = { nome: form.nome.trim(), estilo: form.estilo, linha: form.linha, teor: Number(form.teor), preco: Number(form.preco), descricao: form.descricao.trim() };
+        if (editando) setItens(itens.map((i) => (i.id === editando ? { ...i, ...dados } : i)));
+        else setItens([...itens, { id: uid(), ...dados }]);
+        setModalAberto(false);
+      }
+      const excluir = (item) => { if (window.confirm(`Excluir a cerveja "${item.nome}"?`)) setItens(itens.filter((i) => i.id !== item.id)); };
+      const filtrados = itens.filter((i) => (i.nome + i.estilo + i.linha).toLowerCase().includes(busca.toLowerCase()));
+      const columns = [
+        { key: 'nome', label: 'Cerveja', render: (r) => <span className="t-strong">{r.nome}</span> },
+        { key: 'estilo', label: 'Estilo' },
+        { key: 'linha', label: 'Linha', render: (r) => <span className="badge"><span className="dot" style={{ background: LINHAS[r.linha]?.cor || '#999' }} />{r.linha}</span> },
+        { key: 'teor', label: 'Teor', render: (r) => <span className="t-mono">{r.teor}%</span> },
+        { key: 'preco', label: 'Preço', render: (r) => <span className="t-mono">{brl(r.preco)}</span> },
+      ];
+      return (
+        <main className="page">
+          <div className="container">
+            <div className="page-head">
+              <div><p className="page-eyebrow">CRUD · Catálogo</p><h1 className="page-title">Cervejas</h1><p className="page-sub">Cadastre e gerencie os rótulos da cervejaria.</p></div>
+              <button className="btn btn-primary" onClick={abrirNovo}>+ Nova cerveja</button>
+            </div>
+            <div className="toolbar">
+              <div className="search"><input placeholder="Buscar por nome, estilo ou linha..." value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+              <span className="count-pill">{filtrados.length} de {itens.length} registro(s)</span>
+            </div>
+            <DataTable columns={columns} rows={filtrados}
+              empty={{ titulo: 'Nenhuma cerveja cadastrada', texto: 'Clique em "Nova cerveja" para adicionar o primeiro rótulo.' }}
+              actions={(r) => (<><button className="btn btn-ghost btn-sm" onClick={() => abrirEdicao(r)}>Editar</button><button className="btn btn-danger btn-sm" onClick={() => excluir(r)}>Excluir</button></>)} />
+          </div>
+          {modalAberto && (
+            <Modal title={editando ? 'Editar cerveja' : 'Nova cerveja'} onClose={() => setModalAberto(false)}
+              footer={<><button className="btn btn-ghost" onClick={() => setModalAberto(false)}>Cancelar</button><button className="btn btn-primary" onClick={salvar}>Salvar</button></>}>
+              <form onSubmit={salvar} noValidate>
+                <div className="form-grid">
+                  <div className={'field full' + (errors.nome ? ' invalid' : '')}><label>Nome da cerveja</label><input value={form.nome} onChange={set('nome')} placeholder="Ex.: Leão Dourado" />{errors.nome && <span className="field-error">{errors.nome}</span>}</div>
+                  <div className={'field' + (errors.estilo ? ' invalid' : '')}><label>Estilo</label><select value={form.estilo} onChange={set('estilo')}>{ESTILOS.map((e) => <option key={e} value={e}>{e}</option>)}</select>{errors.estilo && <span className="field-error">{errors.estilo}</span>}</div>
+                  <div className="field"><label>Linha / Rótulo</label><select value={form.linha} onChange={set('linha')}>{LINHA_NOMES.map((l) => <option key={l} value={l}>{l}</option>)}</select></div>
+                  <div className={'field' + (errors.teor ? ' invalid' : '')}><label>Teor alcoólico (%)</label><input type="number" step="0.1" min="0" value={form.teor} onChange={set('teor')} placeholder="Ex.: 5.2" />{errors.teor && <span className="field-error">{errors.teor}</span>}</div>
+                  <div className={'field' + (errors.preco ? ' invalid' : '')}><label>Preço (R$)</label><input type="number" step="0.01" min="0" value={form.preco} onChange={set('preco')} placeholder="Ex.: 24.90" />{errors.preco && <span className="field-error">{errors.preco}</span>}</div>
+                  <div className="field full"><label>Descrição (opcional)</label><textarea value={form.descricao} onChange={set('descricao')} placeholder="Notas de sabor, aroma, harmonização..." /></div>
+                </div>
+              </form>
+            </Modal>
+          )}
+        </main>
+      );
+    }
+
+    /* ---------- pages/Clientes (CRUD 2) ---------- */
+    const VAZIO_CLI = { nome: '', email: '', telefone: '', cidade: '' };
+    function Clientes() {
+      const [itens, setItens] = useState(() => load(KEYS.clientes));
+      const [busca, setBusca] = useState('');
+      const [modalAberto, setModalAberto] = useState(false);
+      const [editando, setEditando] = useState(null);
+      const [form, setForm] = useState(VAZIO_CLI);
+      const [errors, setErrors] = useState({});
+      useEffect(() => { save(KEYS.clientes, itens); }, [itens]);
+      const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+      const abrirNovo = () => { setEditando(null); setForm(VAZIO_CLI); setErrors({}); setModalAberto(true); };
+      const abrirEdicao = (item) => { setEditando(item.id); setForm({ ...item }); setErrors({}); setModalAberto(true); };
+      function validar() {
+        const err = {};
+        if (!form.nome.trim()) err.nome = 'Informe o nome.';
+        if (!form.email.trim()) err.email = 'Informe o e-mail.';
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) err.email = 'E-mail inválido.';
+        if (!form.telefone.trim()) err.telefone = 'Informe o telefone.';
+        setErrors(err); return Object.keys(err).length === 0;
+      }
+      function salvar(e) {
+        e.preventDefault(); if (!validar()) return;
+        const dados = { nome: form.nome.trim(), email: form.email.trim(), telefone: form.telefone.trim(), cidade: form.cidade.trim() };
+        if (editando) setItens(itens.map((i) => (i.id === editando ? { ...i, ...dados } : i)));
+        else setItens([...itens, { id: uid(), ...dados }]);
+        setModalAberto(false);
+      }
+      const excluir = (item) => { if (window.confirm(`Excluir o cliente "${item.nome}"?`)) setItens(itens.filter((i) => i.id !== item.id)); };
+      const filtrados = itens.filter((i) => (i.nome + i.email + i.cidade).toLowerCase().includes(busca.toLowerCase()));
+      const columns = [
+        { key: 'nome', label: 'Cliente', render: (r) => <span className="t-strong">{r.nome}</span> },
+        { key: 'email', label: 'E-mail' },
+        { key: 'telefone', label: 'Telefone', render: (r) => <span className="t-mono">{r.telefone}</span> },
+        { key: 'cidade', label: 'Cidade', render: (r) => r.cidade || '—' },
+      ];
+      return (
+        <main className="page">
+          <div className="container">
+            <div className="page-head">
+              <div><p className="page-eyebrow">CRUD · Pessoas</p><h1 className="page-title">Clientes</h1><p className="page-sub">Cadastro de clientes da cervejaria.</p></div>
+              <button className="btn btn-primary" onClick={abrirNovo}>+ Novo cliente</button>
+            </div>
+            <div className="toolbar">
+              <div className="search"><input placeholder="Buscar por nome, e-mail ou cidade..." value={busca} onChange={(e) => setBusca(e.target.value)} /></div>
+              <span className="count-pill">{filtrados.length} de {itens.length} registro(s)</span>
+            </div>
+            <DataTable columns={columns} rows={filtrados}
+              empty={{ titulo: 'Nenhum cliente cadastrado', texto: 'Clique em "Novo cliente" para adicionar o primeiro.' }}
+              actions={(r) => (<><button className="btn btn-ghost btn-sm" onClick={() => abrirEdicao(r)}>Editar</button><button className="btn btn-danger btn-sm" onClick={() => excluir(r)}>Excluir</button></>)} />
+          </div>
+          {modalAberto && (
+            <Modal title={editando ? 'Editar cliente' : 'Novo cliente'} onClose={() => setModalAberto(false)}
+              footer={<><button className="btn btn-ghost" onClick={() => setModalAberto(false)}>Cancelar</button><button className="btn btn-primary" onClick={salvar}>Salvar</button></>}>
+              <form onSubmit={salvar} noValidate>
+                <div className="form-grid">
+                  <div className={'field full' + (errors.nome ? ' invalid' : '')}><label>Nome completo</label><input value={form.nome} onChange={set('nome')} placeholder="Ex.: Maria Silva" />{errors.nome && <span className="field-error">{errors.nome}</span>}</div>
+                  <div className={'field' + (errors.email ? ' invalid' : '')}><label>E-mail</label><input type="email" value={form.email} onChange={set('email')} placeholder="maria@email.com" />{errors.email && <span className="field-error">{errors.email}</span>}</div>
+                  <div className={'field' + (errors.telefone ? ' invalid' : '')}><label>Telefone</label><input value={form.telefone} onChange={set('telefone')} placeholder="(11) 99999-0000" />{errors.telefone && <span className="field-error">{errors.telefone}</span>}</div>
+                  <div className="field full"><label>Cidade (opcional)</label><input value={form.cidade} onChange={set('cidade')} placeholder="São Paulo" /></div>
+                </div>
+              </form>
+            </Modal>
+          )}
+        </main>
+      );
+    }
+
+    /* ---------- pages/Pedidos (CRUD 3) ---------- */
+    const hoje = () => new Date().toISOString().slice(0, 10);
+    const VAZIO_PED = () => ({ clienteId: '', cervejaId: '', quantidade: 1, data: hoje() });
+    function Pedidos() {
+      const [pedidos, setPedidos] = useState(() => load(KEYS.pedidos));
+      const [clientes] = useState(() => load(KEYS.clientes));
+      const [cervejas] = useState(() => load(KEYS.cervejas));
+      const [modalAberto, setModalAberto] = useState(false);
+      const [editando, setEditando] = useState(null);
+      const [form, setForm] = useState(VAZIO_PED());
+      const [errors, setErrors] = useState({});
+      useEffect(() => { save(KEYS.pedidos, pedidos); }, [pedidos]);
+      const set = (campo) => (e) => setForm({ ...form, [campo]: e.target.value });
+      const acharCliente = (id) => clientes.find((c) => c.id === id);
+      const acharCerveja = (id) => cervejas.find((c) => c.id === id);
+      const abrirNovo = () => { setEditando(null); setForm(VAZIO_PED()); setErrors({}); setModalAberto(true); };
+      const abrirEdicao = (p) => { setEditando(p.id); setForm({ ...p }); setErrors({}); setModalAberto(true); };
+      function validar() {
+        const err = {};
+        if (!form.clienteId) err.clienteId = 'Selecione o cliente.';
+        if (!form.cervejaId) err.cervejaId = 'Selecione a cerveja.';
+        if (!form.quantidade || Number(form.quantidade) <= 0) err.quantidade = 'Quantidade inválida.';
+        if (!form.data) err.data = 'Informe a data.';
+        setErrors(err); return Object.keys(err).length === 0;
+      }
+      function salvar(e) {
+        e.preventDefault(); if (!validar()) return;
+        const dados = { clienteId: form.clienteId, cervejaId: form.cervejaId, quantidade: Number(form.quantidade), data: form.data };
+        if (editando) setPedidos(pedidos.map((p) => (p.id === editando ? { ...p, ...dados } : p)));
+        else setPedidos([...pedidos, { id: uid(), ...dados }]);
+        setModalAberto(false);
+      }
+      const excluir = (p) => { if (window.confirm('Excluir este pedido?')) setPedidos(pedidos.filter((x) => x.id !== p.id)); };
+      const semCadastros = clientes.length === 0 || cervejas.length === 0;
+      const columns = [
+        { key: 'cliente', label: 'Cliente', render: (p) => <span className="t-strong">{acharCliente(p.clienteId)?.nome || '— removido —'}</span> },
+        { key: 'cerveja', label: 'Cerveja', render: (p) => acharCerveja(p.cervejaId)?.nome || '— removida —' },
+        { key: 'quantidade', label: 'Qtd', render: (p) => <span className="t-mono">{p.quantidade}</span> },
+        { key: 'total', label: 'Total', render: (p) => <span className="t-mono">{brl((acharCerveja(p.cervejaId)?.preco || 0) * p.quantidade)}</span> },
+        { key: 'data', label: 'Data', render: (p) => <span className="t-mono">{dataBR(p.data)}</span> },
+      ];
+      return (
+        <main className="page">
+          <div className="container">
+            <div className="page-head">
+              <div><p className="page-eyebrow">CRUD · Vendas</p><h1 className="page-title">Pedidos</h1><p className="page-sub">Registre pedidos relacionando cliente e cerveja.</p></div>
+              <button className="btn btn-primary" onClick={abrirNovo} disabled={semCadastros}>+ Novo pedido</button>
+            </div>
+            {semCadastros && (<div className="empty" style={{ marginBottom: 24 }}><strong>Cadastre clientes e cervejas primeiro</strong>Um pedido precisa de ao menos um cliente e uma cerveja cadastrados.</div>)}
+            <DataTable columns={columns} rows={pedidos}
+              empty={{ titulo: 'Nenhum pedido registrado', texto: 'Clique em "Novo pedido" para registrar o primeiro.' }}
+              actions={(p) => (<><button className="btn btn-ghost btn-sm" onClick={() => abrirEdicao(p)}>Editar</button><button className="btn btn-danger btn-sm" onClick={() => excluir(p)}>Excluir</button></>)} />
+          </div>
+          {modalAberto && (
+            <Modal title={editando ? 'Editar pedido' : 'Novo pedido'} onClose={() => setModalAberto(false)}
+              footer={<><button className="btn btn-ghost" onClick={() => setModalAberto(false)}>Cancelar</button><button className="btn btn-primary" onClick={salvar}>Salvar</button></>}>
+              <form onSubmit={salvar} noValidate>
+                <div className="form-grid">
+                  <div className={'field full' + (errors.clienteId ? ' invalid' : '')}><label>Cliente</label><select value={form.clienteId} onChange={set('clienteId')}><option value="">Selecione um cliente...</option>{clientes.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>{errors.clienteId && <span className="field-error">{errors.clienteId}</span>}</div>
+                  <div className={'field full' + (errors.cervejaId ? ' invalid' : '')}><label>Cerveja</label><select value={form.cervejaId} onChange={set('cervejaId')}><option value="">Selecione uma cerveja...</option>{cervejas.map((c) => <option key={c.id} value={c.id}>{c.nome} — {brl(c.preco)}</option>)}</select>{errors.cervejaId && <span className="field-error">{errors.cervejaId}</span>}</div>
+                  <div className={'field' + (errors.quantidade ? ' invalid' : '')}><label>Quantidade</label><input type="number" min="1" value={form.quantidade} onChange={set('quantidade')} />{errors.quantidade && <span className="field-error">{errors.quantidade}</span>}</div>
+                  <div className={'field' + (errors.data ? ' invalid' : '')}><label>Data</label><input type="date" value={form.data} onChange={set('data')} />{errors.data && <span className="field-error">{errors.data}</span>}</div>
+                </div>
+              </form>
+            </Modal>
+          )}
+        </main>
+      );
+    }
+
+    /* ---------- pages/Relatorio (JOIN simulado) ---------- */
+    function Relatorio() {
+      const linhas = useMemo(() => {
+        const pedidos = load(KEYS.pedidos), clientes = load(KEYS.clientes), cervejas = load(KEYS.cervejas);
+        return pedidos.map((p) => {
+          const cliente = clientes.find((c) => c.id === p.clienteId);
+          const cerveja = cervejas.find((c) => c.id === p.cervejaId);
+          const preco = cerveja?.preco || 0;
+          return { id: p.id, cliente: cliente?.nome || '— removido —', cerveja: cerveja?.nome || '— removida —', estilo: cerveja?.estilo || '—', quantidade: p.quantidade, preco, total: preco * p.quantidade, data: p.data };
+        });
+      }, []);
+      const totalGarrafas = linhas.reduce((s, l) => s + l.quantidade, 0);
+      const totalFaturado = linhas.reduce((s, l) => s + l.total, 0);
+      const columns = [
+        { key: 'cliente', label: 'Cliente', render: (r) => <span className="t-strong">{r.cliente}</span> },
+        { key: 'cerveja', label: 'Cerveja' },
+        { key: 'estilo', label: 'Estilo' },
+        { key: 'quantidade', label: 'Qtd', render: (r) => <span className="t-mono">{r.quantidade}</span> },
+        { key: 'preco', label: 'Preço un.', render: (r) => <span className="t-mono">{brl(r.preco)}</span> },
+        { key: 'total', label: 'Total', render: (r) => <span className="t-mono t-strong">{brl(r.total)}</span> },
+        { key: 'data', label: 'Data', render: (r) => <span className="t-mono">{dataBR(r.data)}</span> },
+      ];
+      return (
+        <main className="page">
+          <div className="container">
+            <div className="page-head"><div><p className="page-eyebrow">Relatório · JOIN simulado</p><h1 className="page-title">Relatório de pedidos</h1><p className="page-sub">Cruzamento de Pedidos × Clientes × Cervejas feito em JavaScript (map + find).</p></div></div>
+            {linhas.length > 0 && (<div className="toolbar" style={{ gap: 28 }}><span className="count-pill"><b>{linhas.length}</b> pedido(s)</span><span className="count-pill"><b>{totalGarrafas}</b> garrafa(s)</span><span className="count-pill">Faturamento: <b>{brl(totalFaturado)}</b></span></div>)}
+            <DataTable columns={columns} rows={linhas} empty={{ titulo: 'Sem dados para o relatório', texto: 'Registre pedidos para ver o cruzamento aqui.' }} />
+          </div>
+        </main>
+      );
+    }
+
+    /* ---------- App + mount ---------- */
+    function App() {
+      return (
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+            <Route path="/" element={<Home />} />
+            <Route path="/cervejas" element={<Cervejas />} />
+            <Route path="/clientes" element={<Clientes />} />
+            <Route path="/pedidos" element={<Pedidos />} />
+            <Route path="/relatorio" element={<Relatorio />} />
+          </Route>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      );
+    }
+
+    createRoot(document.getElementById('root')).render(
+      <HashRouter><AuthProvider><App /></AuthProvider></HashRouter>
+    );
+  </script>
+
+  <!-- Bootstrap: importa as libs (ESM via CDN), transpila o codigo acima com Babel e executa -->
+  <script>
+    (async () => {
+      const [ReactMod, ReactDOMClient, ReactRouterDOM] = await Promise.all([
+        import('https://esm.sh/react@18.3.1'),
+        import('https://esm.sh/react-dom@18.3.1/client?deps=react@18.3.1'),
+        import('https://esm.sh/react-router-dom@6.26.2?deps=react@18.3.1,react-dom@18.3.1'),
+      ]);
+      const React = ReactMod.default;
+      const createRoot = ReactDOMClient.createRoot;
+      const src = document.getElementById('appsrc').textContent;
+      const compiled = Babel.transform(src, { presets: [['react', { runtime: 'classic' }]] }).code;
+      const run = new Function('React', 'ReactRouterDOM', 'createRoot', compiled);
+      run(React, ReactRouterDOM, createRoot);
+    })();
+  </script>
+</body>
+</html>
