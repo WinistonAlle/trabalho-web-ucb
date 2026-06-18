@@ -66,9 +66,9 @@ const PEDIDOS_SEED = [
 ]
 
 export function seedDados() {
-  if (!localStorage.getItem(KEYS.cervejas)) save(KEYS.cervejas, CERVEJAS_SEED)
-  if (!localStorage.getItem(KEYS.clientes)) save(KEYS.clientes, CLIENTES_SEED)
-  if (!localStorage.getItem(KEYS.pedidos))  save(KEYS.pedidos,  PEDIDOS_SEED)
+  if (load(KEYS.cervejas).length === 0) save(KEYS.cervejas, CERVEJAS_SEED)
+  if (load(KEYS.clientes).length === 0) save(KEYS.clientes, CLIENTES_SEED)
+  if (load(KEYS.pedidos).length === 0)  save(KEYS.pedidos,  PEDIDOS_SEED)
 }
 
 // Le uma lista do localStorage (retorna [] se vazio ou invalido).
